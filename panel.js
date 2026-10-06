@@ -86,7 +86,7 @@ const I18N = {
     anonHint:'Paste a hentai.pro watch or video URL. The server fetches and streams it. Your IP never contacts the source.',
     anonLoading:'Resolving video sources...', anonNoSources:'No playable sources found on that page.',
     anonError:'Failed to load. Check the URL or try again.', anonOpenExternal:'Open page in proxy',
-    anonBack:'Back', anonSources:'Sources'
+    anonBack:'Back', anonSources:'Sources', anonTrace:'Resolution trace'
   },
   ru: {
     signin:'Вход', operatorKey:'Ключ оператора', operatorKeyPh:'Введите ключ', signIn:'Войти',
@@ -148,7 +148,7 @@ const I18N = {
     anonHint:'Вставьте ссылку hentai.pro. Сервер загрузит и воспроизведёт. Ваш IP не контактирует с источником.',
     anonLoading:'Поиск источников...', anonNoSources:'Источники не найдены.',
     anonError:'Ошибка загрузки.', anonOpenExternal:'Открыть в прокси',
-    anonBack:'Назад', anonSources:'Источники'
+    anonBack:'Назад', anonSources:'Источники', anonTrace:'Трассировка'
   },
   zh: {
     signin:'登录', operatorKey:'操作员密钥', operatorKeyPh:'输入密钥', signIn:'登录',
@@ -210,7 +210,7 @@ const I18N = {
     anonHint:'粘贴 hentai.pro 链接。服务器获取并播放。你的 IP 不会接触源站。',
     anonLoading:'正在解析视频源...', anonNoSources:'未找到可播放源。',
     anonError:'加载失败。', anonOpenExternal:'在代理中打开',
-    anonBack:'返回', anonSources:'视频源'
+    anonBack:'返回', anonSources:'视频源', anonTrace:'解析过程'
   }
 };
 
@@ -847,6 +847,25 @@ function renderAnonymous(root) {
     });
   };
 
+  const buildTrace = (trace) => {
+    if (!trace || !trace.length) return null;
+    const box = el('div', { className: 'anon-trace' });
+    box.appendChild(el('div', { className: 'anon-sources-title' }, [t('anonTrace')]));
+    const pre = el('pre', { className: 'anon-trace-pre' });
+    pre.textContent = trace.map(tr => {
+      const bits = [String(tr.status)];
+      if (tr.bytes !== undefined) bits.push(tr.bytes + 'B');
+      if (tr.sourcesFound !== undefined) bits.push(tr.sourcesFound + 'src');
+      if (tr.iframesFound !== undefined) bits.push(tr.iframesFound + 'if');
+      bits.push('d' + tr.depth);
+      bits.push(tr.url);
+      if (tr.error) bits.push('ERR:' + tr.error);
+      return bits.join(' ');
+    }).join('\n');
+    box.appendChild(pre);
+    return box;
+  };
+
   const doLoad = async () => {
     const url = normalizeAnonUrl(input.value);
     if (!url) return;
@@ -862,13 +881,31 @@ function renderAnonymous(root) {
         body: JSON.stringify({ url })
       });
       const data = await r.json().catch(() => ({}));
+      console.log('resolve', data);
       if (!r.ok) {
         status.textContent = t('anonError') + (data && data.detail ? ' — ' + data.detail : '');
         return;
       }
       const sources = Array.isArray(data.sources) ? data.sources : [];
       if (!sources.length) {
-        status.textContent = t('anonNoSources');
+        status.innerHTML = '';
+        status.appendChild(el('div', {}, [t('anonNoSources')]));
+        const traceBox = buildTrace(data.trace);
+        if (traceBox) status.appendChild(traceBox);
+        const iframeBox = buildSourcesList(data.iframes || []);
+        status.appendChild(el('div', { className: 'anon-sources-title', style: 'margin-top:0.75rem' }, ['iframes']));
+        if ((data.iframes || []).length) {
+          const list = el('div', { className: 'anon-sources' });
+          (data.iframes || []).forEach((s, i) => {
+            const b = el('button', { className: 'anon-source-btn' });
+            b.textContent = (i + 1) + '. ' + s.replace(/^https?:\/\//, '').slice(0, 90);
+            b.onclick = () => window.open('/api/anonymous?u=' + encodeURIComponent(s), '_blank', 'noopener');
+            list.appendChild(b);
+          });
+          status.appendChild(list);
+        } else {
+          status.appendChild(el('div', { className: 'anon-status' }, ['—']));
+        }
         return;
       }
       status.textContent = '';
