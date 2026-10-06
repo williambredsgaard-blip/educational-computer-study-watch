@@ -1,13 +1,17 @@
-# render.yaml
 services:
   - type: web
     name: rat-controller
     env: node
     plan: free
-    buildCommand: npm install
+    buildCommand: |
+      npm install
+      curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /opt/render/project/src/yt-dlp
+      chmod +x /opt/render/project/src/yt-dlp
     startCommand: npm start
     envVars:
       - key: OPERATOR_KEY
         value: changeme
       - key: NODE_VERSION
         value: 20.11.0
+      - key: YTDLP_PATH
+        value: /opt/render/project/src/yt-dlp
