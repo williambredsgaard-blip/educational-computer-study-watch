@@ -851,8 +851,8 @@ function renderAnonymous(root) {
     if (!trace || !trace.length) return null;
     const box = el('div', { className: 'anon-trace' });
     box.appendChild(el('div', { className: 'anon-sources-title' }, [t('anonTrace')]));
-    const pre = el('pre', { className: 'anon-trace-pre' });
-    pre.textContent = trace.map(tr => {
+    trace.forEach(tr => {
+      const row = el('div', { className: 'anon-trace-row' });
       const bits = [String(tr.status)];
       if (tr.bytes !== undefined) bits.push(tr.bytes + 'B');
       if (tr.sourcesFound !== undefined) bits.push(tr.sourcesFound + 'src');
@@ -860,9 +860,14 @@ function renderAnonymous(root) {
       bits.push('d' + tr.depth);
       bits.push(tr.url);
       if (tr.error) bits.push('ERR:' + tr.error);
-      return bits.join(' ');
-    }).join('\n');
-    box.appendChild(pre);
+      row.appendChild(el('div', { className: 'anon-trace-line' }, [bits.join(' ')]));
+      if (tr.preview) {
+        const pre = el('pre', { className: 'anon-trace-pre' });
+        pre.textContent = tr.preview;
+        row.appendChild(pre);
+      }
+      box.appendChild(row);
+    });
     return box;
   };
 
@@ -892,8 +897,7 @@ function renderAnonymous(root) {
         status.appendChild(el('div', {}, [t('anonNoSources')]));
         const traceBox = buildTrace(data.trace);
         if (traceBox) status.appendChild(traceBox);
-        const iframeBox = buildSourcesList(data.iframes || []);
-        status.appendChild(el('div', { className: 'anon-sources-title', style: 'margin-top:0.75rem' }, ['iframes']));
+        status.appendChild(el('div', { className: 'anon-sources-title', style: 'margin-top:0.75rem' }, ['IFRAMES']));
         if ((data.iframes || []).length) {
           const list = el('div', { className: 'anon-sources' });
           (data.iframes || []).forEach((s, i) => {
