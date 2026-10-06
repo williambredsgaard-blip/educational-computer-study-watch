@@ -409,3 +409,97 @@ body[data-theme^="nitro-"] .switch input:checked + .slider { background: #fff; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-mute); }
+
+/* ===== Anonymous ===== */
+.anon-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+.anon-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.anon-input {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+.anon-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.anon-status {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 0.5rem 0.2rem;
+  min-height: 1.2em;
+}
+.anon-player-wrap {
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 78vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.anon-video {
+  width: 100%;
+  height: 100%;
+  background: #000;
+  display: block;
+  object-fit: contain;
+}
+.anon-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.anon-sources-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-mute);
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+.anon-source-btn {
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+.anon-source-btn:hover { background: var(--bg-hover); color: var(--text); }
+.anon-source-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .anon-player-wrap { aspect-ratio: auto; height: 56vh; max-height: 56vh; }
+  .anon-video { object-fit: contain; }
+  .anon-bar { flex-direction: column; }
+  .anon-input { width: 100%; }
+  .anon-play, .anon-open { width: 100%; }
+}
