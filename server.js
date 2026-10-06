@@ -124,7 +124,21 @@ const ALLOWED_HOSTS = new Set([
 
   'missav.ws',
   'www.missav.ws',
-  'cdn.missav.ws'
+  'cdn.missav.ws',
+
+  // ===== PATCH: real media CDNs behind nhplayer.com / 1hanime players =====
+  '1hanime.com',
+  'www.1hanime.com',
+  'r1.1hanime.com',
+  'r2.1hanime.com',
+  'r3.1hanime.com',
+  'r4.1hanime.com',
+  'r5.1hanime.com',
+  'cdn.1hanime.com',
+  'stream.1hanime.com',
+  'media.1hanime.com',
+  'player.1hanime.com',
+  'v.1hanime.com'
 ]);
 
 function isAllowedHost(host) {
@@ -136,6 +150,30 @@ function isAllowedHost(host) {
     if (h.endsWith('.' + allowed)) return true;
   }
   return false;
+}
+
+// ===== PATCH: base64 helper for decoding obfuscated media URLs =====
+function decodeMaybeBase64(str) {
+  if (!str) return null;
+  let s = String(str).trim();
+  // strip surrounding quotes if any leaked in
+  s = s.replace(/^["']|["']$/g, '');
+  // url-safe -> standard
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  // must look like base64 and be long enough to plausibly contain a URL
+  if (!/^[A-Za-z0-9+/=]+$/.test(s)) return null;
+  if (s.length < 16) return null;
+  // pad
+  while (s.length % 4) s += '=';
+  try {
+    const decoded = Buffer.from(s, 'base64').toString('utf8');
+    if (/^https?:\/\//i.test(decoded)) return decoded;
+  } catch {}
+  return null;
+}
+
+function isMediaUrl(u) {
+  return /\.(m3u8|mp4|webm|mkv|m4v|mov|ts)(\?|#|$)/i.test(u);
 }
 
 function fetchBuffer(targetUrl, { timeout = 12000, redirects = 5, headers = {} } = {}) {
@@ -260,8 +298,6 @@ function extractSources(html, baseUrl) {
     if (existing === undefined || priority < existing) found.set(abs, priority);
   };
 
-  const isMediaUrl = (u) => /\.(m3u8|mp4|webm|mkv|m4v|mov|ts)(\?|#|$)/i.test(u);
-
   let m;
   for (const re of [
     /<source[^>]+src=["']([^"']+)["']/gi,
@@ -312,6 +348,13 @@ function extractSources(html, baseUrl) {
     add(unescaped, 4);
   }
 
+  // ===== PATCH: scan for base64-encoded media URLs in the page =====
+  const reAnyB64 = /["']([A-Za-z0-9+/=_-]{40,})["']/g;
+  while ((m = reAnyB64.exec(html)) !== null) {
+    const decoded = decodeMaybeBase64(m[1]);
+    if (decoded && isMediaUrl(decoded)) add(decoded, 2);
+  }
+
   return [...found.entries()].sort((a, b) => a[1] - b[1]).map(([u]) => u);
 }
 
@@ -348,6 +391,14 @@ async function collectSourcesDeep(startUrl, depth = 3, seen = new Set()) {
     if (!isAllowedHost(host)) {
       entry.status = 'skipped';
       entry.error = 'host not in allowlist';
+      return;
+    }
+
+    // ===== PATCH: if this URL is already a direct media file, record it and stop =====
+    if (isMediaUrl(url)) {
+      collected.add(url);
+      entry.status = 'media';
+      entry.contentType = 'media';
       return;
     }
 
@@ -397,14 +448,64 @@ async function collectSourcesDeep(startUrl, depth = 3, seen = new Set()) {
       try { apiCandidates.add(new URL(mm[1], url).toString()); } catch {}
     }
 
-    const mNh = url.match(/^https?:\/\/(?:www\.)?nhplayer\.com\/v\/([A-Za-z0-9_-]+)/);
-    if (mNh) {
-      const id = mNh[1];
+    // ===== PATCH: nhplayer.com handling — decode base64 data-id / vid / data-video =====
+    if (/^https?:\/\/(?:www\.)?nhplayer\.com\//i.test(url)) {
       const origin = new URL(url).origin;
-      apiCandidates.add(origin + '/api/source/' + id);
-      apiCandidates.add(origin + '/api/source/' + id + '?type=mp4');
-      apiCandidates.add(origin + '/api/video/' + id);
-      apiCandidates.add(origin + '/v/' + id + '/playlist');
+
+      const tryAddDecoded = (raw) => {
+        if (!raw) return;
+        const vidMatch = raw.match(/[?&]vid=([^&"']+)/i);
+        const candidate = vidMatch ? vidMatch[1] : raw;
+        const decoded = decodeMaybeBase64(candidate);
+        if (decoded) {
+          if (isMediaUrl(decoded)) {
+            collected.add(decoded);
+          } else {
+            try { apiCandidates.add(decoded); } catch {}
+          }
+        }
+        // follow relative /player.php?vid=... links directly too
+        if (/^\/|^https?:/i.test(raw)) {
+          try { apiCandidates.add(new URL(raw, url).toString()); } catch {}
+        }
+      };
+
+      let dm;
+      const reDataId = /data-id=["']([^"']+)["']/gi;
+      while ((dm = reDataId.exec(html)) !== null) tryAddDecoded(dm[1]);
+
+      const reDataVideo = /data-(?:video|source|file|url|video-src|hls|mp4)=["']([^"']+)["']/gi;
+      while ((dm = reDataVideo.exec(html)) !== null) tryAddDecoded(dm[1]);
+
+      // Also decode any /player.php?vid=BASE64 style hrefs
+      const rePlayer = /["']([^"']*\/player\.php\?[^"']*vid=([A-Za-z0-9+/=_-]+)[^"']*)["']/gi;
+      while ((dm = rePlayer.exec(html)) !== null) {
+        const fullLink = dm[1];
+        const b64 = dm[2];
+        const decoded = decodeMaybeBase64(b64);
+        if (decoded) {
+          if (isMediaUrl(decoded)) collected.add(decoded);
+          else { try { apiCandidates.add(decoded); } catch {} }
+        }
+        try { apiCandidates.add(new URL(fullLink, url).toString()); } catch {}
+      }
+
+      // Last resort: sweep the whole HTML for base64 blobs that decode to media URLs
+      const reAnyB64 = /["']([A-Za-z0-9+/=_-]{40,})["']/g;
+      while ((dm = reAnyB64.exec(html)) !== null) {
+        const decoded = decodeMaybeBase64(dm[1]);
+        if (decoded && isMediaUrl(decoded)) collected.add(decoded);
+      }
+
+      // legacy guessed endpoints (kept as fallback)
+      const mNh = url.match(/^https?:\/\/(?:www\.)?nhplayer\.com\/v\/([A-Za-z0-9_-]+)/);
+      if (mNh) {
+        const id = mNh[1];
+        apiCandidates.add(origin + '/api/source/' + id);
+        apiCandidates.add(origin + '/api/source/' + id + '?type=mp4');
+        apiCandidates.add(origin + '/api/video/' + id);
+        apiCandidates.add(origin + '/v/' + id + '/playlist');
+      }
     }
 
     const mHt = url.match(/^https?:\/\/(?:www\.)?htstreaming\.com\/player\/index\.php\?data=([^&]+)/);
