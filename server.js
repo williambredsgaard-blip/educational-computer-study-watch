@@ -48,16 +48,72 @@ app.get('/socket.io/socket.io.js', (req, res) =>
 );
 
 const ALLOWED_HOSTS = new Set([
-  'hentai.pro','www.hentai.pro','cdn.hentai.pro','v.hentai.pro','media.hentai.pro','stream.hentai.pro','player.hentai.pro',
-  'hentai-pro.com','www.hentai-pro.com','cdn.hentai-pro.com','v.hentai-pro.com','player.hentai-pro.com','stream.hentai-pro.com',
-  'hentaimama.io','www.hentaimama.io','cdn.hentaimama.io','player.hentaimama.io','stream.hentaimama.io',
-  'hentaigem.com','www.hentaigem.com','cdn.hentaigem.com','player.hentaigem.com','stream.hentaigem.com',
-  'hentaicity.com','www.hentaicity.com','cdn.hentaicity.com','player.hentaicity.com','stream.hentaicity.com',
-  'hentaihaven.xxx','www.hentaihaven.xxx','cdn.hentaihaven.xxx','player.hentaihaven.xxx',
-  'hanime.tv','www.hanime.tv','cdn.hanime.tv','v.hanime.tv','stream.hanime.tv',
-  'hentai.tv','www.hentai.tv','cdn.hentai.tv',
-  'jable.tv','www.jable.tv','cdn.jable.tv',
-  'missav.ws','www.missav.ws','cdn.missav.ws'
+  'hentai.pro',
+  'www.hentai.pro',
+  'cdn.hentai.pro',
+  'v.hentai.pro',
+  'media.hentai.pro',
+  'stream.hentai.pro',
+  'player.hentai.pro',
+
+  'nhplayer.com',
+  'www.nhplayer.com',
+  'cdn.nhplayer.com',
+  'v.nhplayer.com',
+  'stream.nhplayer.com',
+  'player.nhplayer.com',
+  'nhplayer.io',
+  'www.nhplayer.io',
+  'nhplayer.net',
+  'www.nhplayer.net',
+
+  'hentai-pro.com',
+  'www.hentai-pro.com',
+  'cdn.hentai-pro.com',
+  'v.hentai-pro.com',
+  'player.hentai-pro.com',
+  'stream.hentai-pro.com',
+
+  'hentaimama.io',
+  'www.hentaimama.io',
+  'cdn.hentaimama.io',
+  'player.hentaimama.io',
+  'stream.hentaimama.io',
+
+  'hentaigem.com',
+  'www.hentaigem.com',
+  'cdn.hentaigem.com',
+  'player.hentaigem.com',
+  'stream.hentaigem.com',
+
+  'hentaicity.com',
+  'www.hentaicity.com',
+  'cdn.hentaicity.com',
+  'player.hentaicity.com',
+  'stream.hentaicity.com',
+
+  'hentaihaven.xxx',
+  'www.hentaihaven.xxx',
+  'cdn.hentaihaven.xxx',
+  'player.hentaihaven.xxx',
+
+  'hanime.tv',
+  'www.hanime.tv',
+  'cdn.hanime.tv',
+  'v.hanime.tv',
+  'stream.hanime.tv',
+
+  'hentai.tv',
+  'www.hentai.tv',
+  'cdn.hentai.tv',
+
+  'jable.tv',
+  'www.jable.tv',
+  'cdn.jable.tv',
+
+  'missav.ws',
+  'www.missav.ws',
+  'cdn.missav.ws'
 ]);
 
 function isAllowedHost(host) {
@@ -256,19 +312,12 @@ function extractIframes(html, baseUrl) {
   while ((m = re.exec(html)) !== null) {
     let abs;
     try { abs = new URL(m[1], base).toString(); } catch { continue; }
-    let host;
-    try { host = new URL(abs).hostname; } catch { continue; }
-    if (!isAllowedHost(host)) continue;
     out.add(abs);
   }
   return [...out];
 }
 
 async function collectSourcesDeep(startUrl, depth = 3, seen = new Set()) {
-  if (depth < 0) return { sources: [], iframes: [], trace: [] };
-  if (seen.has(startUrl)) return { sources: [], iframes: [], trace: [] };
-  seen.add(startUrl);
-
   const collected = new Set();
   const allIframes = new Set();
   const trace = [];
@@ -278,6 +327,19 @@ async function collectSourcesDeep(startUrl, depth = 3, seen = new Set()) {
     seen.add(url);
     const entry = { url, depth: d, status: 'fetching' };
     trace.push(entry);
+
+    let host;
+    try { host = new URL(url).hostname; } catch {
+      entry.status = 'error';
+      entry.error = 'bad url';
+      return;
+    }
+    if (!isAllowedHost(host)) {
+      entry.status = 'skipped';
+      entry.error = 'host not in allowlist';
+      return;
+    }
+
     let r;
     try { r = await fetchBuffer(url); } catch (e) {
       entry.status = 'error';
