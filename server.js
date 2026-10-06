@@ -67,6 +67,17 @@ const ALLOWED_HOSTS = new Set([
   'nhplayer.net',
   'www.nhplayer.net',
 
+  'htstreaming.com',
+  'www.htstreaming.com',
+  'cdn.htstreaming.com',
+  'v.htstreaming.com',
+  'stream.htstreaming.com',
+  'player.htstreaming.com',
+  'htstreaming.io',
+  'www.htstreaming.io',
+  'htstreaming.net',
+  'www.htstreaming.net',
+
   'hentai-pro.com',
   'www.hentai-pro.com',
   'cdn.hentai-pro.com',
