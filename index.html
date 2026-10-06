@@ -16,10 +16,13 @@
     <h1 data-i18n="signin">Sign in</h1>
     <label class="login-field">
       <span data-i18n="operatorKey">Operator Key</span>
-      <input type="password" id="keyInput" placeholder="Enter operator key" autocomplete="off">
+      <input type="password" id="keyInput" data-i18n-placeholder="operatorKeyPh" placeholder="Enter operator key" autocomplete="off">
     </label>
     <button id="loginBtn" class="login-btn" data-i18n="signIn">Sign In</button>
-    <p class="login-foot"><span data-i18n="needAccess">Need access?</span> <a href="#" onclick="return false" data-i18n="contactAdmin">Contact admin</a></p>
+    <p class="login-foot">
+      <span data-i18n="needAccess">Need access?</span>
+      <a href="#" onclick="return false" data-i18n="contactAdmin">Contact admin</a>
+    </p>
     <div class="login-langs" id="loginLangs">
       <button data-lang="en" class="active">English</button>
       <button data-lang="ru">Русский</button>
@@ -67,7 +70,7 @@
   <main class="main">
     <header class="topbar">
       <div class="topbar-left">
-        <h2 id="viewTitle" data-i18n="clients">Connected Clients</h2>
+        <h2 id="viewTitle" data-i18n="connectedClients">Connected Clients</h2>
       </div>
       <div class="topbar-right">
         <span class="pill-count" id="pillCount">1 | 0 | 1</span>
@@ -80,7 +83,6 @@
   </main>
 </div>
 
-<!-- Notifications panel -->
 <aside id="notifPanel" class="side-panel hidden">
   <div class="side-panel-head">
     <h3 data-i18n="notifications">Notifications</h3>
@@ -90,7 +92,6 @@
   <div id="notifList" class="side-panel-body"></div>
 </aside>
 
-<!-- Theme panel -->
 <aside id="themePanel" class="side-panel hidden">
   <div class="side-panel-head">
     <h3 data-i18n="theme">Theme</h3>
@@ -99,6 +100,8 @@
   <div class="side-panel-body">
     <div class="theme-section-title" data-i18n="baseThemes">Base</div>
     <div class="theme-grid" id="themeBase"></div>
+    <div class="theme-section-title" data-i18n="darkThemes">Dark</div>
+    <div class="theme-grid" id="themeDark"></div>
     <div class="theme-section-title" data-i18n="gradientThemes">Nitro Gradients</div>
     <div class="theme-grid" id="themeGradients"></div>
     <div class="theme-section-title" data-i18n="language">Language</div>
