@@ -47,66 +47,17 @@ app.get('/socket.io/socket.io.js', (req, res) =>
   res.sendFile(require.resolve('socket.io/client-dist/socket.io.js'))
 );
 
-/* ===== Anonymous video proxy =====
-   Visitor -> Render -> source CDN. Source never sees visitor IP.
-   Only http(s). Host allowlist + suffix matches. */
-
 const ALLOWED_HOSTS = new Set([
-  'hentai.pro',
-  'www.hentai.pro',
-  'cdn.hentai.pro',
-  'v.hentai.pro',
-  'media.hentai.pro',
-  'stream.hentai.pro',
-  'player.hentai.pro',
-
-  'hentai-pro.com',
-  'www.hentai-pro.com',
-  'cdn.hentai-pro.com',
-  'v.hentai-pro.com',
-  'player.hentai-pro.com',
-  'stream.hentai-pro.com',
-
-  'hentaimama.io',
-  'www.hentaimama.io',
-  'cdn.hentaimama.io',
-  'player.hentaimama.io',
-  'stream.hentaimama.io',
-
-  'hentaigem.com',
-  'www.hentaigem.com',
-  'cdn.hentaigem.com',
-  'player.hentaigem.com',
-  'stream.hentaigem.com',
-
-  'hentaicity.com',
-  'www.hentaicity.com',
-  'cdn.hentaicity.com',
-  'player.hentaicity.com',
-  'stream.hentaicity.com',
-
-  'hentaihaven.xxx',
-  'www.hentaihaven.xxx',
-  'cdn.hentaihaven.xxx',
-  'player.hentaihaven.xxx',
-
-  'hanime.tv',
-  'www.hanime.tv',
-  'cdn.hanime.tv',
-  'v.hanime.tv',
-  'stream.hanime.tv',
-
-  'hentai.tv',
-  'www.hentai.tv',
-  'cdn.hentai.tv',
-
-  'jable.tv',
-  'www.jable.tv',
-  'cdn.jable.tv',
-
-  'missav.ws',
-  'www.missav.ws',
-  'cdn.missav.ws'
+  'hentai.pro','www.hentai.pro','cdn.hentai.pro','v.hentai.pro','media.hentai.pro','stream.hentai.pro','player.hentai.pro',
+  'hentai-pro.com','www.hentai-pro.com','cdn.hentai-pro.com','v.hentai-pro.com','player.hentai-pro.com','stream.hentai-pro.com',
+  'hentaimama.io','www.hentaimama.io','cdn.hentaimama.io','player.hentaimama.io','stream.hentaimama.io',
+  'hentaigem.com','www.hentaigem.com','cdn.hentaigem.com','player.hentaigem.com','stream.hentaigem.com',
+  'hentaicity.com','www.hentaicity.com','cdn.hentaicity.com','player.hentaicity.com','stream.hentaicity.com',
+  'hentaihaven.xxx','www.hentaihaven.xxx','cdn.hentaihaven.xxx','player.hentaihaven.xxx',
+  'hanime.tv','www.hanime.tv','cdn.hanime.tv','v.hanime.tv','stream.hanime.tv',
+  'hentai.tv','www.hentai.tv','cdn.hentai.tv',
+  'jable.tv','www.jable.tv','cdn.jable.tv',
+  'missav.ws','www.missav.ws','cdn.missav.ws'
 ]);
 
 function isAllowedHost(host) {
@@ -206,7 +157,6 @@ function pipeStream(targetUrl, req, res, redirects = 0) {
   proxyReq.end();
 }
 
-/* Rewrite watch-page HTML so all subresources go through the proxy */
 function rewriteHtml(html, baseUrl) {
   const base = new URL(baseUrl);
   const origin = base.origin;
@@ -228,10 +178,9 @@ function rewriteHtml(html, baseUrl) {
   return html;
 }
 
-/* Extract candidate media URLs from arbitrary HTML. */
 function extractSources(html, baseUrl) {
   const base = new URL(baseUrl);
-  const found = new Map(); // url -> priority (lower = better)
+  const found = new Map();
 
   const add = (raw, priority) => {
     if (!raw) return;
@@ -246,7 +195,6 @@ function extractSources(html, baseUrl) {
 
   const isMediaUrl = (u) => /\.(m3u8|mp4|webm|mkv|m4v|mov|ts)(\?|#|$)/i.test(u);
 
-  // 1. <source src>, <video src>, <video data-src>, <source data-src>
   let m;
   for (const re of [
     /<source[^>]+src=["']([^"']+)["']/gi,
@@ -258,7 +206,6 @@ function extractSources(html, baseUrl) {
     while ((m = re.exec(html)) !== null) add(m[1], 1);
   }
 
-  // 2. Common JS config keys
   for (const re of [
     /(?:file|source|src|url|videoUrl|video_url|playlist|hls|dash|mp4|stream|streamUrl|sources?)\s*[:=]\s*["']([^"']+)["']/gi,
     /["'](?:file|source|src|url|videoUrl|playlist|hls|stream)["']\s*:\s*["']([^"']+)["']/gi
@@ -268,7 +215,6 @@ function extractSources(html, baseUrl) {
     }
   }
 
-  // 3. JSON blobs: try a couple of patterns of "sources":[{file:"..."}]
   for (const re of [
     /"(?:sources?|tracks?)"\s*:\s*\[([^\]]+)\]/gi,
     /'sources?'\s*:\s*\[([^\]]+)\]/gi
@@ -283,7 +229,6 @@ function extractSources(html, baseUrl) {
     }
   }
 
-  // 4. Bare absolute / protocol-relative media URLs anywhere
   for (const re of [
     /https?:\/\/[^"'\\\s<>()]+?\.(?:m3u8|mp4|webm|mkv|m4v|mov)(?:[^"'\\\s<>()]*)/gi,
     /\/\/[^"'\\\s<>()]+?\.(?:m3u8|mp4|webm|mkv|m4v|mov)(?:[^"'\\\s<>()]*)/gi
@@ -294,7 +239,6 @@ function extractSources(html, baseUrl) {
     }
   }
 
-  // 5. Escaped URLs inside embedded JSON (\" ... \")
   const reEsc = /(https?:\\\/\\\/[^"'\s]+?\.(?:m3u8|mp4|webm|mkv|m4v|mov)(?:[^"'\s]*))/gi;
   while ((m = reEsc.exec(html)) !== null) {
     const unescaped = m[1].replace(/\\\//g, '/').replace(/\\u002F/gi, '/');
@@ -304,7 +248,6 @@ function extractSources(html, baseUrl) {
   return [...found.entries()].sort((a, b) => a[1] - b[1]).map(([u]) => u);
 }
 
-/* Extract iframe srcs from HTML, resolved against base, allowlisted hosts only. */
 function extractIframes(html, baseUrl) {
   const base = new URL(baseUrl);
   const out = new Set();
@@ -321,57 +264,63 @@ function extractIframes(html, baseUrl) {
   return [...out];
 }
 
-/* Recursively gather sources from a URL and its allowlisted iframes (depth limited). */
-async function collectSourcesDeep(startUrl, depth = 2, seen = new Set()) {
-  if (depth < 0) return { sources: [], iframes: [] };
-  if (seen.has(startUrl)) return { sources: [], iframes: [] };
+async function collectSourcesDeep(startUrl, depth = 3, seen = new Set()) {
+  if (depth < 0) return { sources: [], iframes: [], trace: [] };
+  if (seen.has(startUrl)) return { sources: [], iframes: [], trace: [] };
   seen.add(startUrl);
 
   const collected = new Set();
   const allIframes = new Set();
+  const trace = [];
 
   const visit = async (url, d) => {
     if (d < 0 || seen.has(url)) return;
     seen.add(url);
+    const entry = { url, depth: d, status: 'fetching' };
+    trace.push(entry);
     let r;
-    try { r = await fetchBuffer(url); } catch { return; }
-    if (r.status < 200 || r.status >= 400) return;
-    const ct = (r.headers['content-type'] || '').toLowerCase();
-    if (!ct.includes('text/html') && !ct.includes('javascript') && !ct.includes('json') && !ct.includes('text/plain') && ct !== '') {
-      // direct media link — treat as source
-      if (/\.(m3u8|mp4|webm|mkv|m4v|mov)(\?|#|$)/i.test(url)) collected.add(url);
+    try { r = await fetchBuffer(url); } catch (e) {
+      entry.status = 'error';
+      entry.error = String(e.message || e);
       return;
     }
+    entry.status = r.status;
+    entry.contentType = r.headers['content-type'] || '';
+    entry.bytes = r.body.length;
+    if (r.status < 200 || r.status >= 400) return;
+
+    const ct = (r.headers['content-type'] || '').toLowerCase();
+    if (/application\/vnd\.apple\.mpegurl/i.test(ct) || /\.m3u8/i.test(url)) collected.add(url);
+    if (/\.(mp4|webm|mkv|m4v|mov)(\?|#|$)/i.test(url)) collected.add(url);
+
+    const looksHtml = ct.includes('text/html') || ct.includes('javascript') || ct.includes('json') || ct.includes('text/plain') || ct === '';
+    if (!looksHtml) return;
+
     const html = r.body.toString('utf8');
-    extractSources(html, url).forEach(s => collected.add(s));
+    const found = extractSources(html, url);
+    entry.sourcesFound = found.length;
+    found.forEach(s => collected.add(s));
 
-    // If the response is an m3u8 playlist, keep it as a source candidate
-    if (/application\/vnd\.apple\.mpegurl/i.test(ct) || /\.m3u8/i.test(url)) {
-      collected.add(url);
-    }
-
-    // Recurse into iframes
     const iframes = extractIframes(html, url);
+    entry.iframesFound = iframes.length;
     iframes.forEach(i => allIframes.add(i));
     for (const i of iframes) {
-      if (d > 0) await visit(i, d - 1);
+      if (d > 1) await visit(i, d - 1);
     }
 
-    // Also look for a JSON endpoint referenced by the page (common pattern)
-    // e.g. /api/source/<id>, /getVideo, /playlist, etc. — try a few heuristics.
     const apiCandidates = new Set();
-    const reApi = /["']([^"']*(?:api|source|video|playlist|stream|hls)[^"']*\.(?:json|php|m3u8)[^"']*)["']/gi;
+    const reApi = /["']([^"']*(?:api|source|video|playlist|stream|hls|embed)[^"']*\.(?:json|php|m3u8|mp4)[^"']*)["']/gi;
     let mm;
     while ((mm = reApi.exec(html)) !== null) {
       try { apiCandidates.add(new URL(mm[1], url).toString()); } catch {}
     }
     for (const c of apiCandidates) {
-      if (d > 0) await visit(c, d - 1);
+      if (d > 1) await visit(c, d - 1);
     }
   };
 
   await visit(startUrl, depth);
-  return { sources: [...collected], iframes: [...allIframes] };
+  return { sources: [...collected], iframes: [...allIframes], trace };
 }
 
 app.get('/api/anonymous', async (req, res) => {
@@ -406,8 +355,6 @@ app.get('/api/anonymous', async (req, res) => {
   }
 });
 
-/* JSON resolver: given a watch page URL, return direct video sources.
-   Recurses into allowlisted iframes and common API endpoints (depth 2). */
 app.post('/api/anonymous/resolve', async (req, res) => {
   const { url } = req.body || {};
   if (!url) { res.status(400).json({ error: 'missing url' }); return; }
@@ -416,21 +363,13 @@ app.post('/api/anonymous/resolve', async (req, res) => {
   if (!isAllowedHost(u.hostname)) { res.status(403).json({ error: 'host not allowed' }); return; }
 
   try {
-    const { sources, iframes } = await collectSourcesDeep(url, 2);
-
-    // If nothing was found directly but we did find iframes, expose them so the client
-    // can at least open the proxied iframe page (which itself will be rewritten).
-    res.json({
-      sources,
-      iframes,
-      pageUrl: url
-    });
+    const { sources, iframes, trace } = await collectSourcesDeep(url, 3);
+    res.json({ sources, iframes, pageUrl: url, trace });
   } catch (e) {
     if (!res.headersSent) res.status(502).json({ error: 'fetch failed', detail: String(e.message || e) });
   }
 });
 
-/* Endpoint used by the visitor player — always fetches via Render's outbound IP */
 app.get('/api/anonymous/stream', (req, res) => {
   const target = req.query.u;
   if (!target) { res.status(400).end(); return; }
