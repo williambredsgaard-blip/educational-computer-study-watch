@@ -495,6 +495,24 @@ body[data-theme^="nitro-"] .switch input:checked + .slider { background: #fff; }
   color: var(--text);
   font-weight: 600;
 }
+.anon-trace {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.anon-trace-pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+}
 
 @media (max-width: 720px) {
   .anon-player-wrap { aspect-ratio: auto; height: 56vh; max-height: 56vh; }
