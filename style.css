@@ -1,0 +1,263 @@
+/* public/style.css */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #0f172a;
+}
+
+.login-box {
+  background: #1e293b;
+  padding: 2rem;
+  border-radius: 12px;
+  width: 320px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+.login-box h1 {
+  margin-bottom: 1.5rem;
+  color: #38bdf8;
+}
+
+.login-box input {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.login-box button {
+  width: 100%;
+  padding: 0.75rem;
+  background: #38bdf8;
+  border: none;
+  border-radius: 6px;
+  color: #0f172a;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.login-box button:hover {
+  background: #7dd3fc;
+}
+
+#loginError {
+  color: #f87171;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background: #1e293b;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #334155;
+}
+
+.logo {
+  padding: 1rem;
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #38bdf8;
+  border-bottom: 1px solid #334155;
+}
+
+.sidebar nav {
+  flex: 1;
+  padding: 0.5rem;
+  overflow-y: auto;
+}
+
+.sidebar nav button {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.25rem;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.sidebar nav button:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.sidebar nav button.active {
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: bold;
+}
+
+.bottom {
+  padding: 1rem;
+  border-top: 1px solid #334155;
+}
+
+.bottom button {
+  width: 100%;
+  padding: 0.5rem;
+  background: #334155;
+  border: none;
+  border-radius: 6px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #0f172a;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #334155;
+}
+
+.topbar h2 {
+  font-size: 1.25rem;
+}
+
+.status-offline {
+  color: #f87171;
+}
+
+.status-online {
+  color: #4ade80;
+}
+
+.view {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.client-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.client-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.client-card:hover {
+  border-color: #38bdf8;
+}
+
+.client-card .hostname {
+  font-weight: bold;
+  margin-bottom: 0.25rem;
+}
+
+.client-card .meta {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.control-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.control-header button {
+  padding: 0.4rem 0.8rem;
+  background: #334155;
+  border: none;
+  border-radius: 4px;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.control-panel {
+  display: flex;
+  gap: 1.5rem;
+  height: calc(100% - 60px);
+}
+
+.screen-container {
+  flex: 1;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #334155;
+}
+
+.screen-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.control-buttons {
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+}
+
+.control-buttons button {
+  padding: 0.6rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.control-buttons button:hover {
+  background: #334155;
+  border-color: #38bdf8;
+}

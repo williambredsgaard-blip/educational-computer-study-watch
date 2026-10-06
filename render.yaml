@@ -1,0 +1,13 @@
+# render.yaml
+services:
+  - type: web
+    name: rat-controller
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: OPERATOR_KEY
+        value: changeme
+      - key: NODE_VERSION
+        value: 20.11.0
